@@ -1,0 +1,55 @@
+import cv2
+import numpy as np
+import os
+from tensorflow.keras.models import load_model
+from hand_detector import detect_hands
+
+model = load_model('sign_language_model.h5')
+actions = np.array(['A', 'B', 'C', 'D', 'E'])
+
+sequence = []
+sentence = []
+predictions = []
+threshold = 0.7
+
+cap = cv2.VideoCapture(0)
+
+while cap.isOpened():
+    ret, frame = cap.read()
+    frame, results = detect_hands(frame)
+    
+    if results.multi_hand_landmarks:
+        landmarks = []
+        for hand_landmarks in results.multi_hand_landmarks:
+            for landmark in hand_landmarks.landmark:
+                landmarks.append([landmark.x, landmark.y, landmark.z])
+        
+        sequence.append(landmarks)
+        sequence = sequence[-30:]
+        
+        if len(sequence) == 30:
+            res = model.predict(np.expand_dims(sequence, axis=0))[0]
+            predictions.append(np.argmax(res))
+            
+            if np.unique(predictions[-10:])[0] == np.argmax(res):
+                if res[np.argmax(res)] > threshold:
+                    if len(sentence) > 0:
+                        if actions[np.argmax(res)] != sentence[-1]:
+                            sentence.append(actions[np.argmax(res)])
+                    else:
+                        sentence.append(actions[np.argmax(res)])
+            
+            if len(sentence) > 5:
+                sentence = sentence[-5:]
+    
+    cv2.rectangle(frame, (0,0), (640, 40), (245, 117, 16), -1)
+    cv2.putText(frame, ' '.join(sentence), (3,30), 
+                cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
+    
+    cv2.imshow('Sign Language Interpreter', frame)
+    
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+cap.release()
+cv2.destroyAllWindows()
